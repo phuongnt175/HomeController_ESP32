@@ -1,6 +1,6 @@
 {
     "C_Cpp.intelliSenseEngine": "default",
-    "idf.adapterTargetName": "esp32s3",
+    "idf.adapterTargetName": "esp32c3",
     "idf.customExtraPaths": "/home/phuongnt/.espressif/tools/xtensa-esp-elf-gdb/12.1_20221002/xtensa-esp-elf-gdb/bin:/home/phuongnt/.espressif/tools/riscv32-esp-elf-gdb/12.1_20221002/riscv32-esp-elf-gdb/bin:/home/phuongnt/.espressif/tools/xtensa-esp32-elf/esp-12.2.0_20230208/xtensa-esp32-elf/bin:/home/phuongnt/.espressif/tools/xtensa-esp32s2-elf/esp-12.2.0_20230208/xtensa-esp32s2-elf/bin:/home/phuongnt/.espressif/tools/xtensa-esp32s3-elf/esp-12.2.0_20230208/xtensa-esp32s3-elf/bin:/home/phuongnt/.espressif/tools/riscv32-esp-elf/esp-12.2.0_20230208/riscv32-esp-elf/bin:/home/phuongnt/.espressif/tools/esp32ulp-elf/2.35_20220830/esp32ulp-elf/bin:/home/phuongnt/.espressif/tools/cmake/3.24.0/bin:/home/phuongnt/.espressif/tools/openocd-esp32/v0.12.0-esp32-20230921/openocd-esp32/bin:/home/phuongnt/.espressif/tools/ninja/1.10.2:/home/phuongnt/.espressif/tools/esp-rom-elfs/20230320",
     "idf.customExtraVars": {
         "OPENOCD_SCRIPTS": "/home/phuongnt/.espressif/tools/openocd-esp32/v0.12.0-esp32-20230921/openocd-esp32/share/openocd/scripts",
@@ -23,6 +23,9 @@
         "esp_log.h": "c",
         "task.h": "c",
         "esp_wifi.h": "c",
-        "esp_event.h": "c"
+        "esp_event.h": "c",
+        "json.h": "c",
+        "cjson.h": "c",
+        "esp_http_server.h": "c"
     }
 }

@@ -1,16 +1,4 @@
-#include <string.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "esp_mac.h"
-#include "esp_wifi.h"
-#include "esp_event.h"
-#include "esp_log.h"
-#include "nvs_flash.h"
-
-#include "esp_http_server.h"
-
-#include "lwip/err.h"
-#include "lwip/sys.h"
+#include "main.h"
 
 #define ESP_WIFI_SSID      "esp32_test_ap"
 #define ESP_WIFI_PASS      "ABC123456"
@@ -19,6 +7,8 @@
 #define SOFTAP_IP          "10.10.10.254"
 
 static const char *TAG = "main";
+
+uint8_t mac_addr[6];
 
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                     int32_t event_id, void* event_data)
@@ -36,7 +26,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 
 static esp_err_t root_handler(httpd_req_t *req)
 {
-    const char *resp_str = "Hello, this is ESP32 SoftAP!";
+    const char *resp_str = "OK";
     httpd_resp_send(req, resp_str, strlen(resp_str));
     return ESP_OK;
 }
@@ -105,7 +95,7 @@ void wifi_init_softap(void)
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    char* ip= "10.10.10.254";
+    char* ip = SOFTAP_IP;
     char* gateway = "10.10.10.254";
     char* netmask = "255.255.255.0";
     esp_netif_ip_info_t info_t;
@@ -153,4 +143,112 @@ void app_main(void)
 
     ESP_LOGI(TAG, "ESP_WIFI_MODE_AP");
     wifi_init_softap();
+    
 }
+
+void HandlerUserLogin(const char* request_body) {
+    getMacAddress(mac_addr);
+    cJSON* body = NULL;
+    cJSON* response = cJSON_CreateObject();
+    struct Token token;
+
+    char mac_str[18];  // Assumes a MAC address is 6 bytes, and each byte is represented by 2 characters, plus a null terminator
+    snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+         mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+
+    body = cJSON_Parse(request_body);
+    if (!body || !cJSON_IsObject(body)) {
+        cJSON_AddStringToObject(response, "error", "Could not parse message");
+        goto BadRequest;
+    }
+
+    const cJSON* username = cJSON_GetObjectItemCaseSensitive(body, "username");
+    const cJSON* password = cJSON_GetObjectItemCaseSensitive(body, "password");
+
+    if (!cJSON_IsString(username) || !cJSON_IsString(password)) {
+        cJSON_AddStringToObject(response, "error", "Invalid format");
+        goto BadRequest;
+    }
+
+    if (strcmp(username->valuestring, "admin") != 0 || strcmp(password->valuestring, "luci123") != 0) {
+        cJSON_AddStringToObject(response, "error", "Invalid credentials");
+        goto BadRequest;
+    }
+
+    // Generate token and expireTime (replace these lines with your actual logic)
+    snprintf(token.token, sizeof(token.token), generateRandomString(TOKEN_LENGTH));
+    token.expireTime = 3600;
+    token.startTime = time(NULL);
+
+    cJSON_AddStringToObject(response, "data", "OK");
+    cJSON_AddStringToObject(response, "timezone", "Asia/Ho Chi Minh"); //timezone?
+    cJSON_AddStringToObject(response, "mac", mac_str); //mac device
+
+    cJSON* token_obj = cJSON_CreateObject();
+    cJSON_AddStringToObject(token_obj, "token", token.token);
+    cJSON_AddNumberToObject(token_obj, "expireTime", token.expireTime);
+    cJSON_AddNumberToObject(token_obj, "startTime", token.startTime);
+
+    cJSON_AddItemToObject(response, "data", token_obj);
+
+    char* response_str = cJSON_PrintUnformatted(response);
+    // TODO: Send response_str as an HTTP response
+
+    cJSON_Delete(response);
+    cJSON_Delete(body);
+    free(response_str);  // Free the memory allocated by cJSON_PrintUnformatted
+    return;
+
+BadRequest:
+    // TODO: Handle bad request
+    cJSON_Delete(response);
+    cJSON_Delete(body);
+}
+
+// Function to generate a random string of a given length
+char* generateRandomString(int length) {
+    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    char* randomString = malloc((length + 1) * sizeof(char));  // +1 for null terminator
+    if (randomString) {
+        for (int i = 0; i < length; i++) {
+            int index = rand() % (int)(sizeof(charset) - 1);
+            randomString[i] = charset[index];
+        }
+        randomString[length] = '\0';  // Null-terminate the string
+    }
+    return randomString;
+}
+
+// Function to generate a token
+struct Token generateToken(int expireTime) {
+    struct Token token;
+
+    // Generate a random string and copy it to the token
+    char* randomString = generateRandomString(TOKEN_LENGTH);
+    strcpy(token.token, randomString);
+    free(randomString);  // Free the memory allocated by generateRandomString
+
+    // Set other token properties
+    token.expireTime = expireTime;
+    token.startTime = (uint32_t)time(NULL);
+
+    // Log information about the generated token
+    printf("Onetime token %s generated (expires in %ds)\n", token.token, expireTime);
+
+    return token;
+}
+
+void getMacAddress(uint8_t mac[6])
+{
+    esp_err_t ret = ESP_OK;
+    ret = esp_efuse_mac_get_default(mac);
+    if(ret != ESP_OK){
+    }
+
+    uint8_t index = 0;
+    char macId[50];
+    for(uint8_t i=0; i<6; i++){
+        index += sprintf(&macId[index], "%02x", mac[i]);
+    }
+}
+
