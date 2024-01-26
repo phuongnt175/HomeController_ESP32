@@ -26,6 +26,7 @@
         "esp_event.h": "c",
         "json.h": "c",
         "cjson.h": "c",
-        "esp_http_server.h": "c"
+        "esp_http_server.h": "c",
+        "esp_https_server.h": "c"
     }
 }

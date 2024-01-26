@@ -1,5 +1,7 @@
 #include "main.h"
 
+#define HTTPS_ENABLE 1
+
 #define ESP_WIFI_SSID      "esp32_test_ap"
 #define ESP_WIFI_PASS      "ABC123456"
 #define ESP_WIFI_CHANNEL   1
@@ -24,6 +26,96 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
+static esp_err_t HandlerUserLogin(httpd_req_t *req) {
+    getMacAddress(mac_addr);
+    cJSON* body = NULL;
+    cJSON* response = cJSON_CreateObject();
+    struct Token token;
+
+    char mac_str[18]; 
+    snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+         mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+
+    // Get the length of the request body
+    size_t content_length = req->content_len;
+
+    // Allocate a buffer to store the request body
+    char* request_body = malloc(content_length + 1);
+    if (!request_body) {
+        // Handle memory allocation error
+        httpd_resp_send(req, "Internal Server Error", strlen("Internal Server Error"));
+        goto BadRequest;
+    }
+
+    if (req->method != HTTP_POST) {
+        httpd_resp_send(req, "Internal Server Error", strlen("Method not supported"));
+        goto BadRequest;
+    }
+
+    // Read the request body
+    if (httpd_req_recv(req, request_body, content_length) <= 0) {
+        // Handle error reading request body
+        free(request_body);
+        httpd_resp_send(req, "Internal Server Error", strlen("Internal Server Error"));
+        goto BadRequest;
+    }
+
+    // Null-terminate the request body string
+    request_body[content_length] = '\0';
+    body = cJSON_Parse(request_body);
+
+    const cJSON* username = cJSON_GetObjectItemCaseSensitive(body, "username");
+    const cJSON* password = cJSON_GetObjectItemCaseSensitive(body, "password");
+
+    if (!cJSON_IsString(username) || !cJSON_IsString(password)) {
+        httpd_resp_send(req, "Internal Server Error", strlen("Internal Server Error"));
+        ESP_LOGI(TAG, "check username and password string");
+        goto BadRequest;
+    }
+
+    if (strcmp(username->valuestring, "admin") != 0 || strcmp(password->valuestring, "luci123") != 0) {
+        httpd_resp_send(req, "Internal Server Error", strlen("Internal Server Error"));
+        ESP_LOGI(TAG, "check string compare");
+        goto BadRequest;
+    }
+    ESP_LOGI(TAG, "pass username and password userlogin check");
+
+    // Generate token and expireTime
+    snprintf(token.token, sizeof(token.token), generateRandomString(TOKEN_LENGTH));
+    ESP_LOGI(TAG, "%s", token.token);
+    token.expireTime = 3600;
+    token.startTime = time(NULL);
+    
+    cJSON* token_obj = cJSON_CreateObject();
+    cJSON_AddStringToObject(token_obj, "timezone", "Asia/Ho Chi Minh"); //timezone?
+    cJSON_AddStringToObject(token_obj, "mac", mac_str); //mac device
+    cJSON_AddStringToObject(token_obj, "token", token.token);
+    cJSON_AddNumberToObject(token_obj, "expireTime", token.expireTime);
+
+    cJSON_AddItemToObject(response, "data", token_obj);
+
+    char* response_str = cJSON_PrintUnformatted(response);
+    httpd_resp_send(req, response_str, strlen(response_str));
+
+    ESP_LOGI(TAG, "%s", response_str);
+
+    // free(request_body);
+    cJSON_Delete(response);
+    cJSON_Delete(body);
+    free(response_str);  // Free the memory allocated by cJSON_PrintUnformatted
+    return ESP_OK;
+
+    BadRequest:
+    // TODO: Handle bad request
+    char* response_bad_rq = cJSON_PrintUnformatted(response);
+    httpd_resp_send(req, response_bad_rq, strlen(response_bad_rq));
+    ESP_LOGI(TAG, "bad request");
+    cJSON_Delete(response);
+    cJSON_Delete(body);
+    free(response_bad_rq);
+    return ESP_OK;
+}
+
 static esp_err_t root_handler(httpd_req_t *req)
 {
     const char *resp_str = "OK";
@@ -46,9 +138,10 @@ static esp_err_t scan_handler(httpd_req_t *req)
 }
 
 static const httpd_uri_t root_uri = {
-    .uri       = "/",
-    .method    = HTTP_GET,
-    .handler   = root_handler,
+    .uri       = "/user/login",
+    .method    = HTTP_POST,
+    .handler   = HandlerUserLogin,
+    .user_ctx  = NULL
 };
 
 static const httpd_uri_t network_uri = {
@@ -63,17 +156,62 @@ static const httpd_uri_t scan_uri = {
     .handler   = scan_handler,
 };
 
+static httpd_handle_t https_server_init(void)
+{
+#ifdef HTTP_ENABLE
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 3001;
+
+    httpd_handle_t server;
+    if (httpd_start(&server, &config) == ESP_OK)
+    {
+        ESP_LOGI(TAG, "HTTP server started on port: '%d'", config.server_port);
+    }
+    else
+    {
+        ESP_LOGE(TAG, "Failed to start HTTP server");
+    }
+#endif
+#ifdef HTTPS_ENABLE
+    httpd_ssl_config_t config = HTTPD_SSL_CONFIG_DEFAULT();
+    httpd_handle_t server = NULL;
+    config.port_secure = 3001;
+
+    extern const unsigned char servercert_pem_start[] asm("_binary_servercert_pem_start");
+    extern const unsigned char servercert_pem_end[] asm("_binary_servercert_pem_end");
+    config.servercert = servercert_pem_start;
+    config.servercert_len = servercert_pem_end - servercert_pem_start;
+
+    extern const unsigned char prvkey_pem_start[] asm("_binary_prvkey_pem_start");
+    extern const unsigned char prvkey_pem_end[] asm("_binary_prvkey_pem_end");
+    config.prvtkey_pem = prvkey_pem_start;
+    config.prvtkey_len = prvkey_pem_end - prvkey_pem_start;
+
+    esp_err_t ret = httpd_ssl_start(&server, &config);
+    if(ESP_OK != ret)
+    {
+        ESP_LOGI(TAG, "Error starting server!");
+        return NULL;
+    }
+
+#endif
+
+    httpd_register_uri_handler(server, &root_uri);
+    httpd_register_uri_handler(server, &network_uri);
+    httpd_register_uri_handler(server, &scan_uri);
+    return server;
+}
+
 void wifi_init_softap(void)
 {
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
 
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
-                                                        ESP_EVENT_ANY_ID,
-                                                        &wifi_event_handler,
-                                                        NULL,
-                                                        NULL));
+    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT,
+                                                ESP_EVENT_ANY_ID,
+                                                &wifi_event_handler,
+                                                NULL));
                                                     
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
@@ -113,22 +251,6 @@ void wifi_init_softap(void)
 
     ESP_LOGI(TAG, "wifi_init_softap finished. SSID:%s",
              ESP_WIFI_SSID);
-
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-
-    httpd_handle_t server;
-    if (httpd_start(&server, &config) == ESP_OK)
-    {
-        ESP_LOGI(TAG, "HTTP server started on port: '%d'", config.server_port);
-    }
-    else
-    {
-        ESP_LOGE(TAG, "Failed to start HTTP server");
-    }
-
-    httpd_register_uri_handler(server, &root_uri);
-    httpd_register_uri_handler(server, &network_uri);
-    httpd_register_uri_handler(server, &scan_uri);
 }
 
 void app_main(void)
@@ -143,66 +265,7 @@ void app_main(void)
 
     ESP_LOGI(TAG, "ESP_WIFI_MODE_AP");
     wifi_init_softap();
-    
-}
-
-void HandlerUserLogin(const char* request_body) {
-    getMacAddress(mac_addr);
-    cJSON* body = NULL;
-    cJSON* response = cJSON_CreateObject();
-    struct Token token;
-
-    char mac_str[18];  // Assumes a MAC address is 6 bytes, and each byte is represented by 2 characters, plus a null terminator
-    snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
-         mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-
-    body = cJSON_Parse(request_body);
-    if (!body || !cJSON_IsObject(body)) {
-        cJSON_AddStringToObject(response, "error", "Could not parse message");
-        goto BadRequest;
-    }
-
-    const cJSON* username = cJSON_GetObjectItemCaseSensitive(body, "username");
-    const cJSON* password = cJSON_GetObjectItemCaseSensitive(body, "password");
-
-    if (!cJSON_IsString(username) || !cJSON_IsString(password)) {
-        cJSON_AddStringToObject(response, "error", "Invalid format");
-        goto BadRequest;
-    }
-
-    if (strcmp(username->valuestring, "admin") != 0 || strcmp(password->valuestring, "luci123") != 0) {
-        cJSON_AddStringToObject(response, "error", "Invalid credentials");
-        goto BadRequest;
-    }
-
-    // Generate token and expireTime (replace these lines with your actual logic)
-    snprintf(token.token, sizeof(token.token), generateRandomString(TOKEN_LENGTH));
-    token.expireTime = 3600;
-    token.startTime = time(NULL);
-
-    cJSON_AddStringToObject(response, "data", "OK");
-    cJSON_AddStringToObject(response, "timezone", "Asia/Ho Chi Minh"); //timezone?
-    cJSON_AddStringToObject(response, "mac", mac_str); //mac device
-
-    cJSON* token_obj = cJSON_CreateObject();
-    cJSON_AddStringToObject(token_obj, "token", token.token);
-    cJSON_AddNumberToObject(token_obj, "expireTime", token.expireTime);
-    cJSON_AddNumberToObject(token_obj, "startTime", token.startTime);
-
-    cJSON_AddItemToObject(response, "data", token_obj);
-
-    char* response_str = cJSON_PrintUnformatted(response);
-    // TODO: Send response_str as an HTTP response
-
-    cJSON_Delete(response);
-    cJSON_Delete(body);
-    free(response_str);  // Free the memory allocated by cJSON_PrintUnformatted
-    return;
-
-BadRequest:
-    // TODO: Handle bad request
-    cJSON_Delete(response);
-    cJSON_Delete(body);
+    https_server_init();
 }
 
 // Function to generate a random string of a given length
@@ -251,4 +314,3 @@ void getMacAddress(uint8_t mac[6])
         index += sprintf(&macId[index], "%02x", mac[i]);
     }
 }
-
