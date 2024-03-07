@@ -9,7 +9,8 @@
                 "${config:idf.espAdfPath}/components/**",
                 "${config:idf.espAdfPathWin}/components/**",
                 "${workspaceFolder}/**",
-                "/home/phuongnt/esp/esp-idf/components"
+                "/home/phuongnt/esp/esp-idf/components",
+                "/home/phuongnt/esp/esp-idf/components/freertos/FreeRTOS-Kernel-SMP/portable/riscv/include/freertos"
             ],
             "browse": {
                 "path": [

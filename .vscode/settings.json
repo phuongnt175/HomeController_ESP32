@@ -27,6 +27,16 @@
         "json.h": "c",
         "cjson.h": "c",
         "esp_http_server.h": "c",
-        "esp_https_server.h": "c"
-    }
+        "esp_https_server.h": "c",
+        "ssl.h": "c",
+        "time.h": "c",
+        "esp_wifi_he_types.h": "c",
+        "timers.h": "c",
+        "portmacro.h": "c",
+        "serversession.h": "c",
+        "functional": "c",
+        "net_sockets.h": "c",
+        "error.h": "c"
+    },
+    "idf.flashType": "UART"
 }
