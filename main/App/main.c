@@ -1,7 +1,5 @@
 #include "main.h"
 
-#define HTTPS_ENABLE 1
-
 #define ESP_WIFI_CHANNEL   1
 #define MAX_STA_CONN       4
 #define SOFTAP_IP          "10.10.10.254"
@@ -12,6 +10,7 @@
 static const char *TAG = "main";
 
 static httpd_handle_t server = NULL; // Initialize to NULL
+static httpd_handle_t sta_server = NULL;
 
 uint8_t mac_addr[6];
 
@@ -337,24 +336,10 @@ static const httpd_uri_t scan_uri = {
     .handler   = scan_handler,
 };
 
-static httpd_handle_t https_server_init(void)
+static httpd_handle_t https_server_init(uint16_t port)
 {
-#ifdef HTTP_ENABLE
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 3001;
-
-    if (httpd_start(&server, &config) == ESP_OK)
-    {
-        ESP_LOGI(TAG, "HTTP server started on port: '%d'", config.server_port);
-    }
-    else
-    {
-        ESP_LOGE(TAG, "Failed to start HTTP server");
-    }
-#endif
-#ifdef HTTPS_ENABLE
     httpd_ssl_config_t config = HTTPD_SSL_CONFIG_DEFAULT();
-    config.port_secure = 3001;
+    config.port_secure = port;
 
     extern const unsigned char servercert_pem_start[] asm("_binary_servercert_pem_start");
     extern const unsigned char servercert_pem_end[] asm("_binary_servercert_pem_end");
@@ -372,15 +357,36 @@ static httpd_handle_t https_server_init(void)
         ESP_LOGI(TAG, "Error starting server!");
         return NULL;
     }
-
-#endif
-
     httpd_register_uri_handler(server, &userLogin_uri);
     httpd_register_uri_handler(server, &wifiList_uri);
     httpd_register_uri_handler(server, &wifiConfig_uri);
     httpd_register_uri_handler(server, &network_uri);
     httpd_register_uri_handler(server, &scan_uri);
     return server;
+}
+
+static httpd_handle_t https_sta_server_init(void)
+{
+    httpd_ssl_config_t config = HTTPD_SSL_CONFIG_DEFAULT();
+    config.port_secure = 443;
+
+    extern const unsigned char staservercert_pem_start[] asm("_binary_staservercert_pem_start");
+    extern const unsigned char staservercert_pem_end[] asm("_binary_staservercert_pem_end");
+    config.servercert = staservercert_pem_start;
+    config.servercert_len = staservercert_pem_end - staservercert_pem_start;
+
+    extern const unsigned char key_pem_start[] asm("_binary_key_pem_start");
+    extern const unsigned char key_pem_end[] asm("_binary_key_pem_end");
+    config.prvtkey_pem = key_pem_start;
+    config.prvtkey_len = key_pem_end - key_pem_start;
+
+    esp_err_t ret = httpd_ssl_start(&sta_server, &config);
+    if(ESP_OK != ret)
+    {
+        ESP_LOGI(TAG, "Error starting server!");
+        return NULL;
+    }
+    return sta_server;
 }
 
 void wifi_init_softap(void)
@@ -442,7 +448,7 @@ void wifi_init_softap(void)
         esp_netif_set_ip_info(ap_netif, &info_t);
         ESP_ERROR_CHECK(esp_netif_dhcps_start(ap_netif));
     }
-
+    https_server_init(3001);
     ESP_LOGI(TAG, "wifi_init_softap finished. SSID:%s",
              SSID);
 }
@@ -459,7 +465,6 @@ void app_main(void)
 
     ESP_LOGI(TAG, "ESP_WIFI_MODE_AP");
     wifi_init_softap();
-    https_server_init();
 }
 
 // Function to generate a random string of a given length
@@ -566,7 +571,6 @@ void wifi_configure(const char *ssid, const char *pass, int networkMode){
                                                         NULL,
                                                         &instance_got_ip));
 
-    vTaskDelay(pdMS_TO_TICKS(1500));
 
     // Configure WiFi with SSID and password
     wifi_config_t wifi_config = {
@@ -595,8 +599,6 @@ void wifi_configure(const char *ssid, const char *pass, int networkMode){
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
-
-    vTaskDelay(pdMS_TO_TICKS(1500));
     
     ESP_LOGI(TAG, "wifi_init_sta finished.");
 
@@ -604,21 +606,13 @@ void wifi_configure(const char *ssid, const char *pass, int networkMode){
             WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
             false,
             false,
-            5000);
+            1000);
 
     ESP_LOGI(TAG, "ssid: %s", wifi_config.sta.ssid);
     ESP_LOGI(TAG, "password: %s", wifi_config.sta.password);
 
-    https_server_init();
-
-    // httpd_config_t test = HTTPD_DEFAULT_CONFIG();
-    // test.server_port = 3001;  // Set the HTTP server port to 80
-
-    // if (httpd_start(&server, &test) == ESP_OK) {
-    //     ESP_LOGI(TAG, "HTTP server started on port: %d", test.server_port);
-    // } else {
-    //     ESP_LOGE(TAG, "Failed to start HTTP server");
-    //}
+    httpd_ssl_stop(&server);
+    https_sta_server_init();
 
     if (bits & WIFI_CONNECTED_BIT) {
     ESP_LOGI(TAG, "connected to Wifi");
@@ -633,7 +627,7 @@ void wifi_configure(const char *ssid, const char *pass, int networkMode){
     }else if (networkMode == 0) {
         //Static mode
     }
-    vTaskDelay(pdMS_TO_TICKS(1500));
+    
     get_sta_ip();
     ESP_LOGI(TAG, "Start Wifi as STA mode");
 }

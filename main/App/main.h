@@ -33,7 +33,8 @@ struct Token {
     uint32_t startTime;
 };
 void wifi_init_softap(void);
-static httpd_handle_t https_server_init(void);
+static httpd_handle_t https_server_init(uint16_t port);
+static httpd_handle_t https_sta_server_init(void);
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
 static esp_err_t network_handler(httpd_req_t *req);
 static esp_err_t scan_handler(httpd_req_t *req);
