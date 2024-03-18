@@ -52,14 +52,19 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
 }
-
+ 
+ /**
+  * @brief User Login Handle
+  * @param httpd_req_t *req
+  * @return ESP_OK
+ */
 static esp_err_t HandlerUserLogin(httpd_req_t *req) {
     getMacAddress(mac_addr);
     cJSON* body = NULL;
     cJSON* response = cJSON_CreateObject();
     struct Token token;
 
-    char mac_str[18]; 
+    char mac_str[18];
     snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
          mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
     convertToLowercase(mac_str);
@@ -149,6 +154,11 @@ static esp_err_t HandlerUserLogin(httpd_req_t *req) {
     return ESP_OK;
 }
 
+/**
+ * @brief Scan Wifi list then send to User
+ * @param httpd_req_t *req
+ * @return ESP_OK
+*/
 static esp_err_t HandlerWifiList(httpd_req_t *req) {
     if (req->method != HTTP_GET) {
         httpd_resp_send(req, "Internal Server Error", strlen("Method not supported"));
@@ -204,6 +214,11 @@ static esp_err_t HandlerWifiList(httpd_req_t *req) {
     return ESP_OK;
 }
 
+/**
+ * @brief get the Wifi info from User
+ * @param httpd_req_t *req
+ * @return ESP_OK
+*/
 static esp_err_t HandlerWifiConfig(httpd_req_t *req){
     getMacAddress(mac_addr);
     char mac_str[18]; 
@@ -288,7 +303,7 @@ static esp_err_t HandlerWifiConfig(httpd_req_t *req){
     cJSON_Delete(body);
     return ESP_OK;
 }
-
+//==================================================================
 static esp_err_t network_handler(httpd_req_t *req)
 {
     const char *resp_str = "Wifi infomation...";
@@ -335,7 +350,13 @@ static const httpd_uri_t scan_uri = {
     .method    = HTTP_GET,
     .handler   = scan_handler,
 };
+//==================================================================
 
+/**
+ * @brief https server init for softAP mode
+ * @param uint16_t port
+ * @return server
+*/
 static httpd_handle_t https_server_init(uint16_t port)
 {
     httpd_ssl_config_t config = HTTPD_SSL_CONFIG_DEFAULT();
@@ -365,6 +386,11 @@ static httpd_handle_t https_server_init(uint16_t port)
     return server;
 }
 
+/**
+ * @brief https server init for STA mode
+ * @param none
+ * @return sta_server
+*/
 static httpd_handle_t https_sta_server_init(void)
 {
     httpd_ssl_config_t config = HTTPD_SSL_CONFIG_DEFAULT();
@@ -389,6 +415,11 @@ static httpd_handle_t https_sta_server_init(void)
     return sta_server;
 }
 
+/**
+ * @brief softAP init function
+ * @param none
+ * @return none
+*/
 void wifi_init_softap(void)
 {
     getMacAddress(mac_addr);
@@ -467,7 +498,11 @@ void app_main(void)
     wifi_init_softap();
 }
 
-// Function to generate a random string of a given length
+/**
+ * @brief Function to generate a random string of a given length
+ * @param int length
+ * @return randomString
+*/
 char* generateRandomString(int length) {
     const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     char* randomString = malloc((length + 1) * sizeof(char));  // +1 for null terminator
@@ -481,7 +516,11 @@ char* generateRandomString(int length) {
     return randomString;
 }
 
-// Function to generate a token
+/**
+ * @brief Function to generate a token
+ * @param int expireTime
+ * @return token
+*/
 struct Token generateToken(int expireTime) {
     struct Token token;
 
@@ -500,6 +539,11 @@ struct Token generateToken(int expireTime) {
     return token;
 }
 
+/**
+ * @brief Function to get device MAC address
+ * @param uint8_t mac[6]
+ * @return none
+*/
 void getMacAddress(uint8_t mac[6])
 {
     esp_err_t ret = ESP_OK;
@@ -508,12 +552,17 @@ void getMacAddress(uint8_t mac[6])
     }
 
     uint8_t index = 0;
-    char macId[50];
+    char macId[50]; 
     for(uint8_t i=0; i<6; i++){
         index += sprintf(&macId[index], "%02x", mac[i]);
     }
 }
 
+/**
+ * @brief Function convert Upper character to lower character
+ * @param char *str
+ * @return none
+*/
 void convertToLowercase(char *str) {
     while (*str) {
         *str = tolower((unsigned char)*str);
@@ -521,6 +570,11 @@ void convertToLowercase(char *str) {
     }
 }
 
+/**
+ * @brief Function to notification wifi mode in string to easy monitor
+ * @param wifi_auth_mode_t auth_mode
+ * @return wifi mode in string
+*/
 const char* wifi_auth_mode_to_str(wifi_auth_mode_t auth_mode) {
     switch (auth_mode) {
         case WIFI_AUTH_OPEN:
@@ -540,6 +594,12 @@ const char* wifi_auth_mode_to_str(wifi_auth_mode_t auth_mode) {
     }
 }
 
+/**
+ * @brief Function to change device wifi mode to STA and then init STA
+ * @param const_char *ssid, *pass
+ * @param int networkMode
+ * @return none
+*/
 void wifi_configure(const char *ssid, const char *pass, int networkMode){
     
     // ESP_ERROR_CHECK(esp_wifi_stop());
@@ -632,6 +692,9 @@ void wifi_configure(const char *ssid, const char *pass, int networkMode){
     ESP_LOGI(TAG, "Start Wifi as STA mode");
 }
 
+/**
+ * @brief Function to get network IP address
+*/
 void get_sta_ip() {
     esp_netif_ip_info_t ip_info;
 
